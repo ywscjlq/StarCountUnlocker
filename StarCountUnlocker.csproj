@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>StarCountUnlocker</AssemblyName>
+    <LangVersion>9</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="0Harmony"><HintPath>$(DSP_DIR)\BepInEx\core\0Harmony.dll</HintPath></Reference>
+    <Reference Include="BepInEx"><HintPath>$(DSP_DIR)\BepInEx\core\BepInEx.dll</HintPath></Reference>
+    <Reference Include="Assembly-CSharp"><HintPath>$(DSP_DIR)\DSPGAME_Data\Managed\Assembly-CSharp.dll</HintPath></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(DSP_DIR)\DSPGAME_Data\Managed\UnityEngine.CoreModule.dll</HintPath></Reference>
+    <Reference Include="netstandard"><HintPath>C:\Windows\Microsoft.NET\assembly\GAC_MSIL\netstandard\v4.0_2.0.0.0__cc7b13ffcd2ddd51\netstandard.dll</HintPath></Reference>
+  </ItemGroup>
+</Project>
