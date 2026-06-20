@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Text;
 using BepInEx;
 using HarmonyLib;
 using UnityEngine;
@@ -16,6 +18,11 @@ namespace StarCountUnlocker
         public static int MaxStars = 1024;
         public static int MinStars = 1;
 
+        // DLC 兼容: 自动检测到的游戏常量集合
+        public static int[] DetectedConstants = null;
+        // 调试: 已修补的方法列表
+        public static List<string> PatchedMethods = new List<string>();
+
         void Awake()
         {
             // 从配置文件读取上限（BepInEx\config\star.count.unlocker.cfg）
@@ -24,8 +31,13 @@ namespace StarCountUnlocker
             MinStars = Config.Bind<int>("StarCount", "MinStars", 1,
                 "Minimum number of stars (slider lower bound).").Value;
 
-            Logger.LogInfo("=== StarCountUnlocker v2.7 ===");
+            Logger.LogInfo("=== StarCountUnlocker v1.0 ===");
             var harm = new Harmony("star.count.unlocker");
+
+            // DLC 兼容: 从游戏运行时自动检测关键常量
+            DetectedConstants = DetectDspConstants();
+            string constStr = "DSP constants: " + string.Join(", ", DetectedConstants);
+            Logger.LogInfo("[SCU] " + constStr);
 
             // 修复1: 替换 OnStarCountSliderValueChange — 移除 20-80 硬编码
             var sliderMethod = AccessTools.Method("UIGalaxySelect:OnStarCountSliderValueChange", new Type[] { typeof(float) });
@@ -47,29 +59,28 @@ namespace StarCountUnlocker
             }
             else { Logger.LogWarning("[SCU] _OnOpen not found!"); }
 
-            // 修复3: 全局扫描 — 所有包含 ldc.i4 25700 的方法都打补丁
-            // MAX_ASTRO_COUNT=25700 在 GalaxyData/SectorModel 等多处用于数组分配
-            // 必须全部扩容才能支持 >256 颗恒星
+            // 修复3: DLC 兼容全局扫描 — 自动匹配所有包含关键常量的方法
+            // 既匹配已知的 25700/25600，也匹配运行时检测到的自定义常量
             Type anyDSPType = AccessTools.TypeByName("GalaxyData");
             if (anyDSPType != null)
             {
                 Assembly dspAsm = anyDSPType.Assembly;
+                PatchedMethods.Clear();
                 int totalPatched = 0;
                 foreach (Type t in dspAsm.GetTypes())
                 {
-                    // 扫描普通方法
                     foreach (MethodInfo m in t.GetMethods(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
                     {
                         if (m.DeclaringType != t) continue;
                         if (TryPatchConstants(harm, m)) totalPatched++;
                     }
-                    // 扫描构造函数（GetMethods 不返回 .ctor/.cctor！）
                     foreach (ConstructorInfo c in t.GetConstructors(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
                     {
                         if (TryPatchConstants(harm, c)) totalPatched++;
                     }
                 }
-                Logger.LogInfo("[SCU] Fix #3: Patched " + totalPatched + " methods with MAX_ASTRO_COUNT=25700");
+                Logger.LogInfo("[SCU] Fix #3: Patched " + totalPatched + " methods with constants "
+                    + string.Join(",", DetectedConstants != null ? DetectedConstants : new int[] { 25700, 25600 }));
             }
 
             Logger.LogInfo("=== Loaded MaxStars=" + MaxStars + " MinStars=" + MinStars + " ===");
@@ -101,15 +112,77 @@ namespace StarCountUnlocker
                 var body = m.GetMethodBody();
                 if (body == null) return false;
                 byte[] il = body.GetILAsByteArray();
-                // 同时匹配 25700 (GalaxyData.astrosData) 和 25600 (SectorModel.galaxyAstroArr)
-                if (ContainsLdcI4Value(il, 25700, 25600))
+                // 构建搜索常量集: 已知常量 + DLC 检测常量
+                var lookFor = new List<int> { 25700, 25600 };
+                if (DetectedConstants != null)
+                    lookFor.AddRange(DetectedConstants);
+                if (ContainsLdcI4Value(il, lookFor.ToArray()))
                 {
                     harm.Patch(m, transpiler: new HarmonyMethod(typeof(Patches), "ReplaceMAX_ASTRO_COUNT"));
+                    PatchedMethods.Add(m.DeclaringType.Name + "." + m.Name);
                     return true;
                 }
             }
             catch (Exception e) { Debug.LogWarning("[SCU] TryPatchConstants failed for " + m.DeclaringType.Name + "." + m.Name + ": " + e.Message); }
             return false;
+        }
+
+        // DLC 兼容: 自动检测游戏中的最大恒星相关常量
+        // 从 GalaxyData.astrosData 和 SectorModel 的构造函数 IL 中提取
+        private static int[] DetectDspConstants()
+        {
+            HashSet<int> results = new HashSet<int>();
+            Type galaxyType = AccessTools.TypeByName("GalaxyData");
+            Type sectorType = AccessTools.TypeByName("SectorModel");
+            Type[] typesToScan = new Type[] { galaxyType, sectorType };
+            foreach (Type t in typesToScan)
+            {
+                if (t == null) continue;
+                foreach (ConstructorInfo c in t.GetConstructors(BindingFlags.Instance | BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic))
+                {
+                    try
+                    {
+                        MethodBody body = c.GetMethodBody();
+                        if (body == null) continue;
+                        byte[] il = body.GetILAsByteArray();
+                        if (il == null || il.Length < 5) continue;
+                        for (int i = 0; i <= il.Length - 5; i++)
+                        {
+                            if (il[i] == 0x20)
+                            {
+                                int val = il[i + 1] | (il[i + 2] << 8) | (il[i + 3] << 16) | (il[i + 4] << 24);
+                                if (val > 10000 && val < 100000)
+                                    results.Add(val);
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }
+            if (results.Count == 0) return null;
+            int[] arr = new int[results.Count];
+            results.CopyTo(arr);
+            return arr;
+        }
+
+        // 调试: F12 打印已修补方法列表
+        void Update()
+        {
+            if (Input.GetKeyDown(KeyCode.F12))
+            {
+                StringBuilder sb = new StringBuilder();
+                sb.AppendLine("=== StarCountUnlocker Debug ===");
+                sb.AppendLine("MaxStars=" + MaxStars + " MinStars=" + MinStars);
+                sb.AppendLine("CalcMaxAstro()=" + CalcMaxAstro());
+                if (DetectedConstants != null)
+                    sb.AppendLine("DetectedConstants: " + string.Join(", ", DetectedConstants));
+                sb.AppendLine("Patched methods (" + PatchedMethods.Count + "):");
+                foreach (string m in PatchedMethods)
+                    sb.AppendLine("  " + m);
+                sb.AppendLine("=== End ===");
+                Debug.Log(sb.ToString());
+                Logger.LogInfo(sb.ToString());
+            }
         }
 
         public static int CalcMaxAstro()

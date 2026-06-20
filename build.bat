@@ -25,6 +25,7 @@ set REFS=%REFS% /r:"%DSP_DIR%\DSPGAME_Data\Managed\UnityEngine.dll"
 set REFS=%REFS% /r:"%DSP_DIR%\DSPGAME_Data\Managed\UnityEngine.UI.dll"
 set REFS=%REFS% /r:"%DSP_DIR%\BepInEx\core\BepInEx.dll"
 set REFS=%REFS% /r:"C:\Windows\Microsoft.NET\assembly\GAC_MSIL\netstandard\v4.0_2.0.0.0__cc7b13ffcd2ddd51\netstandard.dll"
+set REFS=%REFS% /r:"%DSP_DIR%\DSPGAME_Data\Managed\UnityEngine.InputLegacyModule.dll"
 set REFS=%REFS% /r:"%DSP_DIR%\BepInEx\core\0Harmony.dll"
 
 %CSC% /target:library /out:StarCountUnlocker.dll %REFS% Plugin.cs
