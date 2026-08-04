@@ -13,7 +13,7 @@ for %%d in (
 if "%CSC%"=="" (
     echo [ERROR] csc.exe not found! Install .NET Framework 4.8 Developer Pack
     echo https://dotnet.microsoft.com/download/dotnet-framework/net48
-    REM pause removed for auto-build & exit /b 1
+    exit /b 1
 )
 
 echo Using: %CSC%

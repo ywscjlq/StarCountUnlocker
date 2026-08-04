@@ -1,0 +1,9 @@
+{
+    "name": "StarCountUnlocker",
+    "version_number": "1.0.0",
+    "website_url": "",
+    "description": "Unlocks the star count slider in Dyson Sphere Program new game creation, allowing you to select up to 1024 stars (vanilla max is 256). Also automatically patches internal array sizes to support larger galaxies.",
+    "dependencies": [
+        "xiaoye97-BepInEx-5.4.17"
+    ]
+}

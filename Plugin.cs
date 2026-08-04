@@ -36,7 +36,7 @@ namespace StarCountUnlocker
 
             // DLC 兼容: 从游戏运行时自动检测关键常量
             DetectedConstants = DetectDspConstants();
-            string constStr = "DSP constants: " + string.Join(", ", DetectedConstants);
+            string constStr = "DSP constants: " + (DetectedConstants != null ? string.Join(", ", DetectedConstants) : "(none detected)");
             Logger.LogInfo("[SCU] " + constStr);
 
             // 修复1: 替换 OnStarCountSliderValueChange — 移除 20-80 硬编码
@@ -129,6 +129,7 @@ namespace StarCountUnlocker
 
         // DLC 兼容: 自动检测游戏中的最大恒星相关常量
         // 从 GalaxyData.astrosData 和 SectorModel 的构造函数 IL 中提取
+        // 只保留接近 starCount*100 整数倍范围的常量（可能是 astro 数组大小）
         private static int[] DetectDspConstants()
         {
             HashSet<int> results = new HashSet<int>();
@@ -151,7 +152,8 @@ namespace StarCountUnlocker
                             if (il[i] == 0x20)
                             {
                                 int val = il[i + 1] | (il[i + 2] << 8) | (il[i + 3] << 16) | (il[i + 4] << 24);
-                                if (val > 10000 && val < 100000)
+                                // 只保留 20000-200000 范围且接近 100 整数倍的值（astro 数组大小特征）
+                                if (val > 20000 && val < 200000 && val % 100 < 10)
                                     results.Add(val);
                             }
                         }
@@ -187,7 +189,26 @@ namespace StarCountUnlocker
 
         public static int CalcMaxAstro()
         {
-            return MaxStars * 100 + 200;
+            int raw = MaxStars * 100 + 200;
+            // 下限保护: 至少不低于原始常量 25700，防止 MaxStars 设得太小导致数组越界
+            return Math.Max(raw, 25800);
+        }
+
+        // DLC 兼容: 转译器需要替换的常量全集（硬编码 + DLC 检测）
+        private static int[] _allAstroConstants = null;
+        public static int[] GetAllAstroConstants()
+        {
+            if (_allAstroConstants == null)
+            {
+                var set = new HashSet<int> { 25700, 25600 };
+                if (DetectedConstants != null)
+                    foreach (int c in DetectedConstants)
+                        if (c > 20000 && c < 200000) // 合理范围过滤
+                            set.Add(c);
+                _allAstroConstants = new int[set.Count];
+                set.CopyTo(_allAstroConstants);
+            }
+            return _allAstroConstants;
         }
     }
 
@@ -267,6 +288,7 @@ namespace StarCountUnlocker
                 if (slider == null) { Debug.LogWarning("[SCU] starCountSlider not found in _OnOpen"); return; }
                 slider.minValue = StarCountUnlockerPlugin.MinStars;
                 slider.maxValue = StarCountUnlockerPlugin.MaxStars;
+                slider.wholeNumbers = true; // 防止小数星数
                 Debug.Log("[SCU] Slider range set: [" + slider.minValue + ", " + slider.maxValue + "]");
                 GameDesc gameDesc = GetGameDesc(__instance);
                 if (gameDesc != null)
@@ -288,14 +310,20 @@ namespace StarCountUnlocker
         // 全部替换为 CalcMaxAstro() = MaxStars * 100 + 200
         public static IEnumerable<CodeInstruction> ReplaceMAX_ASTRO_COUNT(IEnumerable<CodeInstruction> instructions)
         {
+            int[] targets = StarCountUnlockerPlugin.GetAllAstroConstants();
+            int replacement = StarCountUnlockerPlugin.CalcMaxAstro();
             foreach (CodeInstruction inst in instructions)
             {
                 if (inst.opcode == OpCodes.Ldc_I4 && inst.operand is int)
                 {
                     int v = (int)inst.operand;
-                    if (v == 25700 || v == 25600)
+                    for (int i = 0; i < targets.Length; i++)
                     {
-                        inst.operand = StarCountUnlockerPlugin.CalcMaxAstro();
+                        if (v == targets[i])
+                        {
+                            inst.operand = replacement;
+                            break;
+                        }
                     }
                 }
                 yield return inst;
