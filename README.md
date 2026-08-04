@@ -2,6 +2,11 @@
 
 Unlocks the **star count slider** in Dyson Sphere Program's new game creation screen, allowing you to select up to **1024 stars** (vanilla default max is 256).
 
+## Links
+
+- GitHub: https://github.com/ywscjlq/StarCountUnlocker
+- Thunderstore: (待发布)
+
 ## Features
 
 - Expands the star count slider range: **1 ~ 1024** stars (configurable, default 1~1024)
@@ -36,6 +41,6 @@ BepInEx/config/ywscjlq.star.count.unlocker.cfg
 
 ### 1.0.0
 - Initial release
-- Slider range expansion (64~1024 stars)
+- Slider range expansion (1~1024 stars)
 - ASTRO_COUNT constant patching via Harmony transpiler
 - DLC constant auto-detection
